@@ -2,7 +2,7 @@
 
 A few examples showcasing how to use the Python SDK
 
-# Liscence
+# License
 
 Copyright 2022 AdHawk Microsystems
 
