@@ -5,6 +5,8 @@ A few examples showcasing how to use the Python SDK
 
 ## Setup
 
+Download and install AdHawk's eye tracking software
+
 Creating a virtual enviroment is reccommended: `python -m venv venv`
 
 To start the virtual environment: `source venv/bin/activate`
@@ -15,9 +17,9 @@ Quit the virtual environemnt: `deactivate`
 
 ## Usage
 
-Activate the virtual environment: `source venv/bin/activate`
-
 Run AdHawk Backend
+
+Activate the virtual environment: `source venv/bin/activate`
 
 Modify / run example
 
