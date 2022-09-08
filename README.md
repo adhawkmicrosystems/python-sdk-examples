@@ -17,6 +17,8 @@ Quit the virtual environemnt: `deactivate`
 
 Activate the virtual environment: `source venv/bin/activate`
 
+Run AdHawk Backend
+
 Modify / run example
 
 Quit the virtual environemnt: `deactivate`
