@@ -1,5 +1,3 @@
---extra-index-url https://pypi.adhawkdev.com
-
 adhawk
 opencv-contrib-python-headless
 PySide2
