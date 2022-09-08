@@ -2,6 +2,26 @@
 
 A few examples showcasing how to use the Python SDK
 
+
+## Setup
+
+Creating a virtual enviroment is reccommended: `python -m venv venv`
+
+To start the virtual environment: `source venv/bin/activate`
+
+Installing SDK + requirements: `pip install -r <example>/requirements.txt`
+
+Quit the virtual environemnt: `deactivate`
+
+## Usage
+
+Activate the virtual environment: `source venv/bin/activate`
+
+Modify / run example
+
+Quit the virtual environemnt: `deactivate`
+
+
 # License
 
 Copyright 2022 AdHawk Microsystems
