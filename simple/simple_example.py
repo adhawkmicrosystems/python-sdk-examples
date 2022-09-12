@@ -29,6 +29,9 @@ class Frontend:
         # Disallows console output until a Quick Start has been run
         self._allow_output = False
 
+        # Used to limit the rate at which data is displayed in the console
+        self._last_console_print = None
+
         # Flags the frontend as not connected yet
         self.connected = False
         print('Starting frontend...')
@@ -56,7 +59,13 @@ class Frontend:
     def _handle_gaze_data_stream(self, timestamp, x_pos, y_pos, z_pos, vergence):
         ''' Prints gaze data to the console '''
 
+        # Only log at most once per second
+        if self._last_console_print and timestamp < self._last_console_print + 1:
+            return
+
+
         if self._allow_output:
+            self._last_console_print = timestamp
             print(f'Gaze data\n'
                   f'Time since connection:\t{timestamp}\n'
                   f'X coordinate:\t\t{x_pos}\n'
@@ -81,9 +90,8 @@ class Frontend:
         if not error:
             print('Connected to AdHawk Backend Service')
 
-            # Sets the GAZE data stream rate to 1Hz. This is for demonstration purposes and to not flood the console.
-            # Typical data sampling frequencies are 60, 125, 250, or 500Hz.
-            self._api.set_stream_control(PacketType.GAZE, 1, callback=(lambda *_args: None))
+            # Sets the GAZE data stream rate to 125Hz
+            self._api.set_stream_control(PacketType.GAZE, 125, callback=(lambda *_args: None))
 
             # Tells the api which event streams we want to tap into. In this case, we wish to tap into the BLINK and
             # SACCADE data streams.
@@ -92,7 +100,8 @@ class Frontend:
 
             # Starts the MindLink's camera so that a Quick Start can be performed. Note that we use a camera index of 0
             # here, but your camera index may be different, depending on your setup. On windows, it should be 0.
-            self._api.start_camera_capture(0, adhawkapi.CameraResolution.MEDIUM, callback=(lambda *_args: None))
+            self._api.start_camera_capture(camera_index=0, resolution_index=adhawkapi.CameraResolution.MEDIUM,
+                                           correct_distortion=False, callback=self._handle_camera_start_response)
 
             # Flags the frontend as connected
             self.connected = True
