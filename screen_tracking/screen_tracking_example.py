@@ -123,7 +123,7 @@ class Frontend:
 
             # Starts the tracker's camera so that video can be captured and sets self._handle_camera_start_response as
             # the callback. This function will be called once the api has finished starting the camera.
-            self._api.start_camera_capture(camera_index=1, resolution_index=adhawkapi.CameraResolution.MEDIUM,
+            self._api.start_camera_capture(camera_index=0, resolution_index=adhawkapi.CameraResolution.MEDIUM,
                                            correct_distortion=False, callback=self._handle_camera_start_response)
 
 
@@ -337,17 +337,18 @@ class TrackingWindow(QtWidgets.QMainWindow):
 
     def _calibrate(self):
         ''' Function to allow the main loop to invoke a Calibration '''
-        self.showMinimized()
+        self.setVisible(False)
         self.frontend.enable_screen_tracking(False)
         self.frontend.calibrate()
 
     def _quickstart(self):
         ''' Function to allow the main loop to invoke a Quick Start '''
-        self.showMinimized()
+        self.setVisible(False)
         self.frontend.enable_screen_tracking(False)
         self.frontend.quickstart()
 
     def _handle_prodcedure_complete(self):
+        self.setVisible(True)
         self.showFullScreen()
 
     def closeEvent(self, event):
