@@ -9,7 +9,7 @@ Download and install AdHawk's eye tracking software
 
 Creating a virtual enviroment is reccommended: `python -m venv venv`
 
-To start the virtual environment: `source venv/bin/activate` or `venv\Scripts\activate.bat`
+To start the virtual environment: `source venv/bin/activate` or `.\venv\Scripts\activate`
 
 Installing SDK + requirements: `pip install -r <example>/requirements.txt`
 
@@ -19,7 +19,7 @@ Quit the virtual environemnt: `deactivate`
 
 Run AdHawk Backend
 
-Activate the virtual environment: `source venv/bin/activate` or `venv\Scripts\activate.bat`
+Activate the virtual environment: `source venv/bin/activate` or `.\venv\Scripts\activate`
 
 Modify / run example
 
