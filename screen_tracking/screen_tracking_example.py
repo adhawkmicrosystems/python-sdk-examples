@@ -35,9 +35,6 @@ class Frontend:
         # Save the given handler to pass in when we start the camera
         self._handle_camera_start_response = handle_camera_start_response
 
-        # Save the procedure complete handler
-        self._handle_prodcedure_complete = handle_prodcedure_complete
-
         # Tell the api that we wish to tap into the GAZE_IN_SCREEN in screen data stream
         # with the given handle_gaze_in_screen_stream as the handler
         self._api.register_stream_handler(PacketType.GAZE_IN_SCREEN, handle_gaze_in_screen_stream)
