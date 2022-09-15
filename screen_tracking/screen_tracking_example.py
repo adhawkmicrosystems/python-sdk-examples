@@ -32,6 +32,12 @@ class Frontend:
         # Instantiate an API object
         self._api = adhawkapi.frontend.FrontendApi()
 
+        # Save the given handler to pass in when we start the camera
+        self._handle_camera_start_response = handle_camera_start_response
+
+        # Save the procedure complete handler
+        self._handle_prodcedure_complete = handle_prodcedure_complete
+        
         # Tell the api that we wish to tap into the GAZE_IN_SCREEN in screen data stream
         # with the given handle_gaze_in_screen_stream as the handler
         self._api.register_stream_handler(PacketType.GAZE_IN_SCREEN, handle_gaze_in_screen_stream)
@@ -43,12 +49,6 @@ class Frontend:
         # Start the api and set its connection callback to self._handle_connect. When the api detects a connection to a
         # MindLink, this function will be run.
         self._api.start(connect_cb=self._handle_connect_response)
-
-        # Save the given handler to pass in when we start the camera
-        self._handle_camera_start_response = handle_camera_start_response
-
-        # Save the procedure complete handler
-        self._handle_prodcedure_complete = handle_prodcedure_complete
 
     def shutdown(self):
         ''' Shuts down the backend connection '''
