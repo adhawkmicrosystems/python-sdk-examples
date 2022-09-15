@@ -42,6 +42,9 @@ class Frontend:
         # Stops api camera capture
         self._api.stop_camera_capture(lambda *_args: None)
 
+        # Stop the log session
+        self._api.stop_log_session(lambda *_args: None)
+
         # Shuts down the api
         self._api.shutdown()
 
@@ -102,6 +105,9 @@ class Frontend:
             # here, but your camera index may be different, depending on your setup. On windows, it should be 0.
             self._api.start_camera_capture(camera_index=0, resolution_index=adhawkapi.CameraResolution.MEDIUM,
                                            correct_distortion=False, callback=self._handle_camera_start_response)
+
+            # Starts a logging session which saves eye tracking signals. This can be very useful for troubleshooting
+            self._api.start_log_session(log_mode=adhawkapi.LogMode.BASIC, callback=lambda *args: None)
 
             # Flags the frontend as connected
             self.connected = True
