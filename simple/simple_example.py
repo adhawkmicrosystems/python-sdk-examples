@@ -104,7 +104,7 @@ class Frontend:
             # Starts the MindLink's camera so that a Quick Start can be performed. Note that we use a camera index of 0
             # here, but your camera index may be different, depending on your setup. On windows, it should be 0.
             self._api.start_camera_capture(camera_index=0, resolution_index=adhawkapi.CameraResolution.MEDIUM,
-                                           correct_distortion=False, callback=self._handle_camera_start_response)
+                                           correct_distortion=False, callback=(lambda *_args: None))
 
             # Starts a logging session which saves eye tracking signals. This can be very useful for troubleshooting
             self._api.start_log_session(log_mode=adhawkapi.LogMode.BASIC, callback=lambda *args: None)
