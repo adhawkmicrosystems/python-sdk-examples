@@ -28,7 +28,7 @@ class Frontend:
     Frontend communicating with the backend
     '''
 
-    def __init__(self, handle_camera_start_response, handle_gaze_in_screen_stream, handle_prodcedure_complete):
+    def __init__(self, handle_camera_start_response, handle_gaze_in_screen_stream):
         # Instantiate an API object
         self._api = adhawkapi.frontend.FrontendApi()
 
@@ -37,7 +37,7 @@ class Frontend:
 
         # Save the procedure complete handler
         self._handle_prodcedure_complete = handle_prodcedure_complete
-        
+
         # Tell the api that we wish to tap into the GAZE_IN_SCREEN in screen data stream
         # with the given handle_gaze_in_screen_stream as the handler
         self._api.register_stream_handler(PacketType.GAZE_IN_SCREEN, handle_gaze_in_screen_stream)
@@ -109,7 +109,6 @@ class Frontend:
             # Screen tracking gets disabled when we start a marker sequence procedure, such as a Quick Start or
             # calibration, so we re-enable it upon receiving a PROCEDURE_ENDED event
             self.enable_screen_tracking(True)
-            self._handle_prodcedure_complete()
 
     def _handle_connect_response(self, error):
         ''' Handler for backend connection responses '''
@@ -126,7 +125,7 @@ class Frontend:
 
             # Starts the tracker's camera so that video can be captured and sets self._handle_camera_start_response as
             # the callback. This function will be called once the api has finished starting the camera.
-            self._api.start_camera_capture(camera_index=1, resolution_index=adhawkapi.CameraResolution.MEDIUM,
+            self._api.start_camera_capture(camera_index=0, resolution_index=adhawkapi.CameraResolution.MEDIUM,
                                            correct_distortion=False, callback=self._handle_camera_start_response)
 
             # Starts a logging session which saves eye tracking signals. This can be very useful for troubleshooting
@@ -142,16 +141,18 @@ class Frontend:
             self.enable_screen_tracking(True)
 
 
-class TrackingWindow(QtWidgets.QMainWindow):
+class TrackingWindow(QtWidgets.QWidget):
     ''' Class for receiving and displaying the user's gaze in the screen '''
     # pylint: disable=too-many-instance-attributes
     MARKER_DIC = cv2.aruco.DICT_4X4_50  # pylint: disable=no-member
+    ARUCO_MARKER_SIZE_MM = 20
+    ARUCO_MARKER_BORDER_MM = 1
     EDGE_OFFSETS_MM = np.array([[10, 10], [10, 10]])  # Marker offsets: [[left, right], [top, bottom]]
 
     NUM_POINTS = 10
 
     def __init__(self):
-        super().__init__()
+        QtWidgets.QWidget.__init__(self)
         self.setWindowTitle('Screen tracking example')
 
         # Gets the screen dpi from Qt's QApplication class
@@ -161,52 +162,45 @@ class TrackingWindow(QtWidgets.QMainWindow):
         # Calculates the 'real' dpi as the average of the horizontal and vertical dpis
         self._dpi = np.mean([dpi_x, dpi_y])
 
-        # Creates an array of the horizontal and vertical screen dimensions
+        # Use the entire screen
         self._screen_size = np.array([QtWidgets.QApplication.instance().primaryScreen().geometry().width(),
                                       QtWidgets.QApplication.instance().primaryScreen().geometry().height()])
 
         # Gets the screen size in mm and outputs all screen information to the console
-        self._size_mm = self._pix_to_mm(self._screen_size)
-        print(f'screen info: \n    dpi={self._dpi}\n    size_pix={self._screen_size}\n    size_mm={self._size_mm}')
+        self._screen_size_mm = self._pix_to_mm(self._screen_size)
+        print(f'screen info: \n    dpi={self._dpi}\n    size_pix={self._screen_size}\n    size_mm={self._screen_size_mm}')
 
-        # Necessary member variables:
         # Unique IDs for each ArUco (tracking) marker
         self._marker_ids = [0, 1, 2, 3]
 
-        # The image that the markers will be drawn on
-        self._board_image = None
+        # Calculate the position of the markers on the screen
+        self._marker_positions = self._calculate_marker_positions()
 
-        # Deque for storing the most recent gaze points. These points are averaged to reduce jitter.
-        self._point_deque = deque()
+        # Takes the marker positions and generates an RGBA OpenCV image
+        marker_image = self._create_marker_image()
 
-        # Sets up the custom marker board
-        self._marker_positions = self._create_custom_board()
+        # Convert the RGBA buffer into a Qt Label widget
+        self._marker_widget = QtWidgets.QLabel()
+        qt_marker_image = QtGui.QImage(marker_image, marker_image.shape[1], marker_image.shape[0],
+                                       marker_image.shape[1] * marker_image.shape[2], QtGui.QImage.Format_ARGB32)
+        self._marker_pixmap = QtGui.QPixmap(qt_marker_image)
+        self._marker_widget.setPixmap(self._marker_pixmap)
 
-        # Translates the previously calculated marker positions into a display image and writes it to a file.
-        board_image = self._create_custom_board_image()
-        board_height, board_width = board_image.shape
+        # Text instruction layer / widget
+        text_label = QtWidgets.QLabel()
+        text_label.setText('ESC: Exit\nQ: Run a Quick Start\nC: Run a Calibration')
+        text_label.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
 
-        # Loads the saved board image into a QLabel to display
-        self._background_widget = QtWidgets.QLabel(self)
-        self._board_image = QtGui.QImage(board_image, board_width, board_height, board_width,
-                                         QtGui.QImage.Format_Indexed8)
-        self._base_pixmap = QtGui.QPixmap(self._board_image)
-        self._background_widget.setPixmap(self._base_pixmap)
-        self._width = self._base_pixmap.width()
-        self._height = self._base_pixmap.height()
+        # Example background layer / widget
+        background_widget = QtWidgets.QLabel()
+        background_widget.setStyleSheet("background-color:lightblue")
 
-        # Sets the window's main widget to the board image
-        widget = QtWidgets.QWidget()
-        self.setCentralWidget(widget)
-
-        layout = QtWidgets.QHBoxLayout(widget)
+        layout = QtWidgets.QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._background_widget)
 
-        self._text_label = QtWidgets.QLabel(widget)
-        self._text_label.setText('ESC:\tExit\nQ:\tRun a Quick Start\nC:\tRun a Calibration')
-        self._text_label.adjustSize()
-        self._text_label.move(QtCore.QPoint(self._width/2 - self._text_label.width()/2, self._height/2))
+        layout.addWidget(background_widget, 0, 0)
+        layout.addWidget(self._marker_widget, 0, 0)
+        layout.addWidget(text_label, 0, 0)
 
         # A Quick Start tunes the scan range and frequency to best suit the user's eye and face shape, resulting in
         # better tracking data. For the best quality results in your application, you should also perform a calibration
@@ -222,20 +216,20 @@ class TrackingWindow(QtWidgets.QMainWindow):
         self.calibration_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence('Escape'), self)
         self.calibration_shortcut.activated.connect(self.close)
 
-        # Makes the window display frameless and mazimized
-        # self.setWindowFlag(QtCore.Qt.FramelessWindowHint)
-        # self.showMaximized()
-        self.showFullScreen()
+        self.setWindowFlag(QtCore.Qt.FramelessWindowHint)
+        self.showMaximized()
+
+        # Deque for storing the most recent gaze points, which is currently needed to reduce jitter
+        self._point_deque = deque()
 
         self._running_xcoord = 0
         self._running_ycoord = 0
 
-        self._xcoord = 0
-        self._ycoord = 0
+        self._xcoord = None
+        self._ycoord = None
 
         # Creates the Frontend object
-        self.frontend = Frontend(self._handle_camera_start_response, self._handle_gaze_in_screen_stream,
-                                 self._handle_prodcedure_complete)
+        self.frontend = Frontend(self._handle_camera_start_response, self._handle_gaze_in_screen_stream)
 
         self._setup_video_timer()
 
@@ -251,8 +245,8 @@ class TrackingWindow(QtWidgets.QMainWindow):
             return
 
         # Translates the passed coordinates to positions on the screen
-        new_xcoord = round(self._width * xpos)
-        new_ycoord = round(self._height * ypos)
+        new_xcoord = round(self._screen_size[0] * xpos)
+        new_ycoord = round(self._screen_size[1] * ypos)
 
         # Adds the new point to the point deque, and pops the least recent entry if the size of the deque exceeds
         # its maximum allowed size
@@ -270,7 +264,10 @@ class TrackingWindow(QtWidgets.QMainWindow):
         self._ycoord = self._running_ycoord / len(self._point_deque)
 
     def _every_frame(self):
-        pixmap = self._base_pixmap.copy()
+        if not self._xcoord or not self._ycoord:
+            return
+
+        pixmap = self._marker_pixmap.copy()
 
         # Qt code to draw a circle at the calculated position
         painter = QtGui.QPainter(pixmap)
@@ -283,7 +280,7 @@ class TrackingWindow(QtWidgets.QMainWindow):
         painter.end()
 
         # Sets the new image with the gaze marker ellipse drawn
-        self._background_widget.setPixmap(pixmap)
+        self._marker_widget.setPixmap(pixmap)
 
     def _handle_camera_start_response(self, error):
         ''' Handler for the camera start response '''
@@ -291,7 +288,7 @@ class TrackingWindow(QtWidgets.QMainWindow):
         # If the camera started successfully, we try to register the screen.
         if not error:
             print('Camera started')
-            self.frontend.register_screen(self._size_mm[0] * 1e-3, self._size_mm[1] * 1e-3,
+            self.frontend.register_screen(self._screen_size_mm[0] * 1e-3, self._screen_size_mm[1] * 1e-3,
                                           self.MARKER_DIC, self._marker_ids, self._marker_positions)
 
     def _mm_to_pix(self, length_mm):
@@ -304,28 +301,29 @@ class TrackingWindow(QtWidgets.QMainWindow):
         mm2inch = 25.4
         return np.array(length_pix) * mm2inch / self._dpi
 
-    def _create_custom_board(self):
+    def _calculate_marker_positions(self):
         ''' Calculates up the positions of the ArUco markers on the screen '''
         margin_size = self.EDGE_OFFSETS_MM * 1e-3
-        board_size = self._size_mm * 1e-3
-        marker_size = GAZE_MARKER_SIZE * 1e-3
+        screen_size = self._screen_size_mm * 1e-3
+        marker_size = self.ARUCO_MARKER_SIZE_MM * 1e-3
+
         positions = np.array([
             [margin_size[0, 0], - margin_size[1, 0] - marker_size],
-            [board_size[0] - margin_size[0, 1] - marker_size, - margin_size[1, 0] - marker_size],
-            [margin_size[0, 0], - board_size[1] + margin_size[1, 1]],
-            [board_size[0] - margin_size[0, 1] - marker_size, - board_size[1] + margin_size[1, 1]],
+            [screen_size[0] - margin_size[0, 1] - marker_size, - margin_size[1, 0] - marker_size],
+            [margin_size[0, 0], - screen_size[1] + margin_size[1, 1]],
+            [screen_size[0] - margin_size[0, 1] - marker_size, - screen_size[1] + margin_size[1, 1]],
         ])
         markers = []
         for marker_pos in positions:
             markers.append([*marker_pos, marker_size])
         return markers
 
-    def _create_custom_board_image(self):
+    def _create_marker_image(self):
         ''' Uses the calculated marker positions to draw ArUco markers to an image '''
 
-        marker_size = int(self._screen_size[0] * GAZE_MARKER_SIZE / self._size_mm[0])
+        marker_size = int(self._screen_size[0] * self.ARUCO_MARKER_SIZE_MM / self._screen_size_mm[0])
         margins = self._mm_to_pix(self.EDGE_OFFSETS_MM)
-        board_image = np.ones((self._screen_size[1], self._screen_size[0]), dtype=np.uint8) * 255
+        board_image = np.zeros((self._screen_size[1], self._screen_size[0], 4), dtype=np.uint8)
 
         offsets = {0: (margins[0, 0], margins[1, 0]),
                    1: (self._screen_size[0] - margins[0, 1] - marker_size, margins[1, 0]),
@@ -334,27 +332,28 @@ class TrackingWindow(QtWidgets.QMainWindow):
                        self._screen_size[1] - margins[1, 1] - marker_size)}
 
         for _id_i, _id in enumerate(self._marker_ids):
-            _img = np.zeros((marker_size, marker_size), dtype=np.uint8)
-            _img = aruco.drawMarker(aruco.Dictionary_get(self.MARKER_DIC), _id, marker_size, _img, 1)
+            _img = np.full((marker_size, marker_size), 255, dtype=np.uint8)
+            aruco.drawMarker(aruco.Dictionary_get(self.MARKER_DIC), _id, marker_size, _img, 1)
+            _img = cv2.cvtColor(_img, cv2.COLOR_GRAY2RGBA)
             board_image[offsets[_id_i][1]:offsets[_id_i][1] + marker_size,
                         offsets[_id_i][0]:offsets[_id_i][0] + marker_size] = _img
+
+            border_thickness = self._mm_to_pix(self.ARUCO_MARKER_BORDER_MM)
+            border_start = (offsets[_id_i][0] - border_thickness, offsets[_id_i][1] - border_thickness)
+            border_end = (offsets[_id_i][0] + marker_size, offsets[_id_i][1] + marker_size)
+            board_image = cv2.rectangle(board_image, border_start, border_end, (255, 255, 255, 255), border_thickness)
 
         return board_image
 
     def _calibrate(self):
         ''' Function to allow the main loop to invoke a Calibration '''
-        self.showMinimized()
         self.frontend.enable_screen_tracking(False)
         self.frontend.calibrate()
 
     def _quickstart(self):
         ''' Function to allow the main loop to invoke a Quick Start '''
-        self.showMinimized()
         self.frontend.enable_screen_tracking(False)
         self.frontend.quickstart()
-
-    def _handle_prodcedure_complete(self):
-        self.showFullScreen()
 
     def closeEvent(self, event):
         ''' Override of closeEvent method to shut down the api when the window closes '''
