@@ -1,2 +1,2 @@
-adhawk<6.0
+adhawk>=6.0
 PySide2

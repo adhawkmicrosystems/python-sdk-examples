@@ -8,7 +8,7 @@ import sys
 from collections import deque
 
 import cv2
-import cv2.aruco as aruco # pylint: disable=no-member, import-error
+import cv2.aruco as aruco  # pylint: disable=no-member, import-error
 import numpy as np
 
 # This example requires the PySide2 library for displaying windows and video. Other such libraries are avaliable, and
@@ -17,7 +17,7 @@ from PySide2 import QtCore, QtGui, QtWidgets
 
 import adhawkapi
 import adhawkapi.frontend
-from adhawkapi.publicapi import Events, MarkerSequenceMode, PacketType
+from adhawkapi.publicapi import Events, MarkerSequenceMode
 
 
 GAZE_MARKER_SIZE = 20
@@ -28,20 +28,20 @@ class Frontend:
     Frontend communicating with the backend
     '''
 
-    def __init__(self, handle_camera_start_response, handle_gaze_in_screen_stream):
+    def __init__(self, handle_camera_start_response, handle_et_data):
         # Instantiate an API object
         self._api = adhawkapi.frontend.FrontendApi()
 
         # Save the given handler to pass in when we start the camera
         self._handle_camera_start_response = handle_camera_start_response
 
-        # Tell the api that we wish to tap into the GAZE_IN_SCREEN in screen data stream
-        # with the given handle_gaze_in_screen_stream as the handler
-        self._api.register_stream_handler(PacketType.GAZE_IN_SCREEN, handle_gaze_in_screen_stream)
+        # Tell the api that we wish to tap into the EYETRACKING data stream
+        # with the given handle_et_data as the handler
+        self._api.register_stream_handler(adhawkapi.PacketType.EYETRACKING_STREAM, handle_et_data)
 
         # Tell the api that we wish to tap into the EVENTS stream
         # with self._handle_event_stream as the handler
-        self._api.register_stream_handler(PacketType.EVENTS, self._handle_event_stream)
+        self._api.register_stream_handler(adhawkapi.PacketType.EVENTS, self._handle_event_stream)
 
         # Start the api and set its connection callback to self._handle_connect. When the api detects a connection to a
         # MindLink, this function will be run.
@@ -114,20 +114,23 @@ class Frontend:
         if not error:
             print('Backend connected')
 
-            # Sets the GAZE_IN_SCREEN data stream rate to 125Hz
-            self._api.set_stream_control(adhawkapi.PacketType.GAZE_IN_SCREEN, 125, callback=(lambda *args: None))
+            # Sets the data stream rate to 125Hz
+            self._api.set_et_stream_rate(125, callback=(lambda *_args: None))
+
+            # Enable the GAZE_IN_SCREEN data stream
+            self._api.set_et_stream_control(adhawkapi.EyeTrackingStreamTypes.GAZE_IN_SCREEN, 1,
+                                            callback=(lambda *_args: None))
 
             # Tells the api which event streams we want to tap into, in this case the PROCEDURE_START_END stream
             self._api.set_event_control(adhawkapi.EventControlBit.PRODECURE_START_END, 1, callback=(lambda *args: None))
 
             # Starts the tracker's camera so that video can be captured and sets self._handle_camera_start_response as
             # the callback. This function will be called once the api has finished starting the camera.
-            self._api.start_camera_capture(camera_index=0, resolution_index=adhawkapi.CameraResolution.MEDIUM,
-                                           correct_distortion=False, callback=self._handle_camera_start_response)
+            self._api.start_camera_capture(resolution_index=adhawkapi.CameraResolution.MEDIUM,
+                                           callback=self._handle_camera_start_response)
 
             # Starts a logging session which saves eye tracking signals. This can be very useful for troubleshooting
-            self._api.start_log_session(log_mode=adhawkapi.LogMode.BASIC, callback=lambda *args: None)
-
+            self._api.start_log_session(log_mode=adhawkapi.LogMode.OCULAR, callback=lambda *args: None)
 
     def _handle_screen_registered_response(self, error):
         ''' Handler for the screen register response '''
@@ -186,7 +189,7 @@ class TrackingWindow(QtWidgets.QWidget):
         # Text instruction layer / widget
         text_label = QtWidgets.QLabel()
         text_label.setText('ESC: Exit\nQ: Run a Quick Start\nC: Run a Calibration')
-        text_label.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
+        text_label.setAlignment(QtCore.Qt.AlignCenter)
 
         # Example background layer / widget
         background_widget = QtWidgets.QLabel()
@@ -226,7 +229,7 @@ class TrackingWindow(QtWidgets.QWidget):
         self._ycoord = None
 
         # Creates the Frontend object
-        self.frontend = Frontend(self._handle_camera_start_response, self._handle_gaze_in_screen_stream)
+        self.frontend = Frontend(self._handle_camera_start_response, self._handle_et_data)
 
         self._setup_video_timer()
 
@@ -236,8 +239,12 @@ class TrackingWindow(QtWidgets.QWidget):
         self._imagetimer.timeout.connect(self._every_frame)
         self._imagetimer.start(self._imagetimer_interval)
 
-    def _handle_gaze_in_screen_stream(self, _timestamp, xpos, ypos):
+    def _handle_et_data(self, et_data):
         ''' Handler for the gaze in screen stream '''
+        if et_data.gaze_in_screen is None:
+            return
+
+        xpos, ypos = et_data.gaze_in_screen
         if math.isnan(xpos) or math.isnan(ypos):
             return
 

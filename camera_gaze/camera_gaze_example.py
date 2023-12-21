@@ -12,7 +12,7 @@ from PySide2 import QtCore, QtGui, QtWidgets
 
 import adhawkapi
 import adhawkapi.frontend
-from adhawkapi import MarkerSequenceMode, PacketType
+from adhawkapi import MarkerSequenceMode
 
 
 MARKER_SIZE = 20  # Diameter in pixels of the gaze marker
@@ -22,12 +22,13 @@ MARKER_COLOR = (0, 250, 50)  # Colour of the gaze marker
 class Frontend:
     ''' Frontend communicating with the backend '''
 
-    def __init__(self, handle_gaze_in_image_stream, video_receiver_address):
+    def __init__(self, handle_et_data, video_receiver_address):
         # Instantiate an API object
         self._api = adhawkapi.frontend.FrontendApi()
 
-        # Tell the api that we wish to tap into the GAZE_IN_IMAGE data stream with the given callback as the handler
-        self._api.register_stream_handler(PacketType.GAZE_IN_IMAGE, handle_gaze_in_image_stream)
+        # Tell the api that we wish to tap into the EYETRACKING data stream
+        # with the given handle_et_data callback as the handler
+        self._api.register_stream_handler(adhawkapi.PacketType.EYETRACKING_STREAM, handle_et_data)
 
         # Start the api and set its connection callback to self._handle_connect. When the api detects a connection to a
         # tracker, this function will be run.
@@ -75,16 +76,20 @@ class Frontend:
         # Starts the camera and sets the stream rate
         if not error:
 
-            # Sets the GAZE_IN_IMAGE data stream rate to 125Hz
-            self._api.set_stream_control(PacketType.GAZE_IN_IMAGE, 125, callback=(lambda *args: None))
+            # Sets the data stream rate to 125Hz
+            self._api.set_et_stream_rate(125, callback=(lambda *_args: None))
+
+            # Enable the GAZE_IN_IMAGE data stream
+            self._api.set_et_stream_control(adhawkapi.EyeTrackingStreamTypes.GAZE_IN_IMAGE, 1,
+                                            callback=(lambda *_args: None))
 
             # Starts the tracker's camera so that video can be captured and sets self._handle_camera_start_response as
             # the callback. This function will be called once the api has finished starting the camera.
-            self._api.start_camera_capture(camera_index=0, resolution_index=adhawkapi.CameraResolution.MEDIUM,
-                                           correct_distortion=False, callback=self._handle_camera_start_response)
+            self._api.start_camera_capture(resolution_index=adhawkapi.CameraResolution.MEDIUM,
+                                           callback=self._handle_camera_start_response)
 
             # Starts a logging session which saves eye tracking signals. This can be very useful for troubleshooting
-            self._api.start_log_session(log_mode=adhawkapi.LogMode.BASIC, callback=lambda *args: None)
+            self._api.start_log_session(log_mode=adhawkapi.LogMode.OCULAR, callback=lambda *args: None)
 
             # Flags the frontend as connected
             self.connected = True
@@ -138,7 +143,7 @@ class GazeViewer(QtWidgets.QWidget):
 
         # Instantiate a Frontend object. We give it the address of the video receiver, so the api's video stream will
         # be sent to it.
-        self.frontend = Frontend(self._handle_gaze_in_image_stream, self._video_receiver.address)
+        self.frontend = Frontend(self._handle_et_data, self._video_receiver.address)
 
         # Initialize the gaze coordinates to dummy values for now
         self._gaze_coordinates = (0, 0)
@@ -165,7 +170,7 @@ class GazeViewer(QtWidgets.QWidget):
         ''' Function to allow the main loop to invoke a Calibration '''
         self.frontend.calibrate()
 
-    def _handle_video_stream(self, _gaze_timestamp, _frame_index, image_buf, _frame_timestamp):
+    def _handle_video_stream(self, _gaze_imestamp, image_buf, _frame_timestamp):
 
         # Create a new Qt pixmap and load the frame's data into it
         qt_img = QtGui.QPixmap()
@@ -184,11 +189,13 @@ class GazeViewer(QtWidgets.QWidget):
         # Sets the new image
         self.image_label.setPixmap(qt_img)
 
-    def _handle_gaze_in_image_stream(self, _timestamp, gaze_img_x, gaze_img_y, *_args):
+    def _handle_et_data(self, et_data):
 
         # Updates the gaze marker coordinates with new gaze data. It is possible to receive NaN from the api, so we
         # filter the input accordingly.
-        self._gaze_coordinates = [gaze_img_x, gaze_img_y]
+        if et_data.gaze_in_image is not None:
+            gaze_img_x, gaze_img_y, *_ = et_data.gaze_in_image
+            self._gaze_coordinates = [gaze_img_x, gaze_img_y]
 
     def _draw_gaze_marker(self, qt_img):
         if math.isnan(self._gaze_coordinates[0]) or math.isnan(self._gaze_coordinates[1]):

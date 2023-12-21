@@ -4,7 +4,6 @@ import time
 
 import adhawkapi
 import adhawkapi.frontend
-from adhawkapi import Events, MarkerSequenceMode, PacketType
 
 
 class Frontend:
@@ -14,13 +13,13 @@ class Frontend:
         # Instantiate an API object
         self._api = adhawkapi.frontend.FrontendApi()
 
-        # Tell the api that we wish to tap into the GAZE data stream
-        # with self._handle_gaze_data_stream as the handler
-        self._api.register_stream_handler(PacketType.GAZE, self._handle_gaze_data_stream)
+        # Tell the api that we wish to tap into the EYETRACKING data stream
+        # with self._handle_et_data as the handler
+        self._api.register_stream_handler(adhawkapi.PacketType.EYETRACKING_STREAM, self._handle_et_data)
 
         # Tell the api that we wish to tap into the EVENTS stream
-        # with self._handle_event_stream as the handler
-        self._api.register_stream_handler(PacketType.EVENTS, self._handle_event_stream)
+        # with self._handle_event_data as the handler
+        self._api.register_stream_handler(adhawkapi.PacketType.EVENTS, self._handle_event_data)
 
         # Start the api and set its connection callback to self._handle_connect_response. When the api detects a
         # connection to a MindLink, this function will be run.
@@ -53,37 +52,37 @@ class Frontend:
 
         # The MindLink's camera will need to be running to detect the marker that the Quick Start procedure will
         # display. This is why we need to call self._api.start_camera_capture() once the MindLink has connected.
-        self._api.quick_start_gui(mode=MarkerSequenceMode.FIXED_GAZE, marker_size_mm=35,
+        self._api.quick_start_gui(mode=adhawkapi.MarkerSequenceMode.FIXED_GAZE, marker_size_mm=35,
                                   callback=(lambda *_args: None))
 
         # Allows console output
         self._allow_output = True
 
-    def _handle_gaze_data_stream(self, timestamp, x_pos, y_pos, z_pos, vergence):
+    def _handle_et_data(self, et_data):
         ''' Prints gaze data to the console '''
 
         # Only log at most once per second
-        if self._last_console_print and timestamp < self._last_console_print + 1:
+        if self._last_console_print and et_data.timestamp < self._last_console_print + 1:
             return
 
-
-        if self._allow_output:
-            self._last_console_print = timestamp
+        if self._allow_output and et_data.gaze is not None:
+            self._last_console_print = et_data.timestamp
+            x_pos, y_pos, z_pos, vergence = et_data.gaze
             print(f'Gaze data\n'
-                  f'Time since connection:\t{timestamp}\n'
+                  f'Time since connection:\t{et_data.timestamp}\n'
                   f'X coordinate:\t\t{x_pos}\n'
                   f'Y coordinate:\t\t{y_pos}\n'
                   f'Z coordinate:\t\t{z_pos}\n'
                   f'Vergence angle:\t\t{vergence}\n')
 
-    def _handle_event_stream(self, event_type, _timestamp, *_args):
+    def _handle_event_data(self, event_type, _timestamp, *_args):
         ''' Prints event data to the console '''
         if self._allow_output:
 
             # We discriminate between events based on their type
-            if event_type == Events.BLINK.value:
+            if event_type == adhawkapi.Events.BLINK.value:
                 print('Blink!')
-            elif event_type == Events.SACCADE.value:
+            elif event_type == adhawkapi.Events.SACCADE.value:
                 print('Saccade!')
 
     def _handle_connect_response(self, error):
@@ -93,8 +92,11 @@ class Frontend:
         if not error:
             print('Connected to AdHawk Backend Service')
 
-            # Sets the GAZE data stream rate to 125Hz
-            self._api.set_stream_control(PacketType.GAZE, 125, callback=(lambda *_args: None))
+            # Sets the data stream rate to 125Hz
+            self._api.set_et_stream_rate(125, callback=(lambda *_args: None))
+
+            # Enable the gaze data stream
+            self._api.set_et_stream_control(adhawkapi.EyeTrackingStreamTypes.GAZE, 1, callback=(lambda *_args: None))
 
             # Tells the api which event streams we want to tap into. In this case, we wish to tap into the BLINK and
             # SACCADE data streams.
@@ -103,11 +105,11 @@ class Frontend:
 
             # Starts the MindLink's camera so that a Quick Start can be performed. Note that we use a camera index of 0
             # here, but your camera index may be different, depending on your setup. On windows, it should be 0.
-            self._api.start_camera_capture(camera_index=0, resolution_index=adhawkapi.CameraResolution.MEDIUM,
-                                           correct_distortion=False, callback=(lambda *_args: None))
+            self._api.start_camera_capture(resolution_index=adhawkapi.CameraResolution.MEDIUM,
+                                           callback=(lambda *_args: None))
 
             # Starts a logging session which saves eye tracking signals. This can be very useful for troubleshooting
-            self._api.start_log_session(log_mode=adhawkapi.LogMode.BASIC, callback=lambda *args: None)
+            self._api.start_log_session(log_mode=adhawkapi.LogMode.OCULAR, callback=lambda *args: None)
 
             # Flags the frontend as connected
             self.connected = True
