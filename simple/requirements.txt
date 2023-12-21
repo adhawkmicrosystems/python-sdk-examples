@@ -1,1 +1,1 @@
-adhawk
+adhawk<6.0
