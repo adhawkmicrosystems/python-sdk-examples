@@ -28,12 +28,12 @@ class Frontend:
     Frontend communicating with the backend
     '''
 
-    def __init__(self, handle_camera_start_response, handle_et_data):
+    def __init__(self, handle_register_board, handle_et_data):
         # Instantiate an API object
         self._api = adhawkapi.frontend.FrontendApi()
 
         # Save the given handler to pass in when we start the camera
-        self._handle_camera_start_response = handle_camera_start_response
+        self._register_board = handle_register_board
 
         # Tell the api that we wish to tap into the EYETRACKING data stream
         # with the given handle_et_data as the handler
@@ -52,9 +52,6 @@ class Frontend:
 
         # Disables screen tracking
         self.enable_screen_tracking(False)
-
-        # Stops api camera capture
-        self._api.stop_camera_capture(lambda *_args: None)
 
         # Stop the log session
         self._api.stop_log_session(lambda *_args: None)
@@ -90,13 +87,11 @@ class Frontend:
     def enable_screen_tracking(self, enable):
         ''' Utility function to enable or disable screen tracking '''
 
-        # Note that the GAZE_IN_SCREEN data stream will only output when screen tracking is enabled
-        if enable:
-            print('Starting screen tracking')
-            self._api.start_screen_tracking(lambda *_args: None)
-        else:
-            print('Stopping screen tracking')
-            self._api.stop_screen_tracking(lambda *_args: None)
+        # Enable the GAZE_IN_SCREEN data stream
+        self._api.set_et_stream_control([adhawkapi.EyeTrackingStreamTypes.GAZE,
+                                         adhawkapi.EyeTrackingStreamTypes.GAZE_IN_SCREEN],
+                                        enable,
+                                        callback=(lambda *_args: None))
 
     def _handle_event_stream(self, event_type, _timestamp, *_args):
         ''' Handler for the event stream '''
@@ -117,24 +112,16 @@ class Frontend:
             # Sets the data stream rate to 125Hz
             self._api.set_et_stream_rate(125, callback=(lambda *_args: None))
 
-            # Enable the GAZE_IN_SCREEN data stream
-            self._api.set_et_stream_control(adhawkapi.EyeTrackingStreamTypes.GAZE_IN_SCREEN, 1,
-                                            callback=(lambda *_args: None))
-
             # Tells the api which event streams we want to tap into, in this case the PROCEDURE_START_END stream
             self._api.set_event_control(adhawkapi.EventControlBit.PRODECURE_START_END, 1, callback=(lambda *args: None))
-
-            # Starts the tracker's camera so that video can be captured and sets self._handle_camera_start_response as
-            # the callback. This function will be called once the api has finished starting the camera.
-            self._api.start_camera_capture(resolution_index=adhawkapi.CameraResolution.MEDIUM,
-                                           callback=self._handle_camera_start_response)
 
             # Starts a logging session which saves eye tracking signals. This can be very useful for troubleshooting
             self._api.start_log_session(log_mode=adhawkapi.LogMode.OCULAR, callback=lambda *args: None)
 
+            self._register_board()
+
     def _handle_screen_registered_response(self, error):
         ''' Handler for the screen register response '''
-
         # If the screen was registered successfully, we enable screen tracking to start the GAZE_IN_SCREEN stream
         if not error:
             print('ArUco markers registered')
@@ -229,7 +216,7 @@ class TrackingWindow(QtWidgets.QWidget):
         self._ycoord = None
 
         # Creates the Frontend object
-        self.frontend = Frontend(self._handle_camera_start_response, self._handle_et_data)
+        self.frontend = Frontend(self._handle_register_board, self._handle_et_data)
 
         self._setup_video_timer()
 
@@ -286,14 +273,11 @@ class TrackingWindow(QtWidgets.QWidget):
         # Sets the new image with the gaze marker ellipse drawn
         self._marker_widget.setPixmap(pixmap)
 
-    def _handle_camera_start_response(self, error):
+    def _handle_register_board(self):
         ''' Handler for the camera start response '''
-
-        # If the camera started successfully, we try to register the screen.
-        if not error:
-            print('Camera started')
-            self.frontend.register_screen(self._screen_size_mm[0] * 1e-3, self._screen_size_mm[1] * 1e-3,
-                                          self.MARKER_DIC, self._marker_ids, self._marker_positions)
+        print('System ready')
+        self.frontend.register_screen(self._screen_size_mm[0] * 1e-3, self._screen_size_mm[1] * 1e-3,
+                                      self.MARKER_DIC, self._marker_ids, self._marker_positions)
 
     def _mm_to_pix(self, length_mm):
         ''' Converts an array of values in mm to an aray of pixel lengths '''
